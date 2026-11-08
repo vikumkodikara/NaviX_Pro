@@ -2,7 +2,6 @@ name = "navix-pro"
 main = "src/index.ts"
 compatibility_date = "2024-05-01"
 workers_dev = true
-account_id = "b654ce5cf60fcd070a872fb13571e367"
 
 [observability]
 enabled = true
