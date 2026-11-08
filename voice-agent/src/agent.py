@@ -5,6 +5,7 @@ import textwrap
 
 from dotenv import load_dotenv
 from livekit.agents import (
+    APIConnectOptions,
     Agent,
     AgentServer,
     AgentSession,
@@ -156,11 +157,14 @@ server = AgentServer()
 
 def build_session() -> AgentSession:
     """Build the speech-to-speech session that powers the agent."""
+    api_key = (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or "").strip()
     return AgentSession(
         llm=google.realtime.RealtimeModel(
             model=GEMINI_LIVE_MODEL,
             api_version="v1alpha",
             voice="Puck",
+            api_key=api_key or None,
+            conn_options=APIConnectOptions(timeout=30.0, max_retry=5, retry_interval=2.0),
         ),
     )
 
