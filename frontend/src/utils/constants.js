@@ -1,13 +1,18 @@
-const PROD_WORKER_URL = "https://navix-api.nethminamalshan5.workers.dev";
+const PROD_WORKER_URL = "https://navix-pro.vikumkodikara123.workers.dev";
 const isLocalHost =
   typeof window !== "undefined" &&
   (window.location.hostname === "localhost" ||
     window.location.hostname === "127.0.0.1");
 
-export const API_BASE_URL =
+const rawApiUrl =
   import.meta.env.VITE_API_BASE_URL ||
-  import.meta.env.NEXT_PUBLIC_API_URL ||
-  (isLocalHost ? "http://127.0.0.1:8787" : PROD_WORKER_URL);
+  import.meta.env.NEXT_PUBLIC_API_URL;
+
+export const API_BASE_URL = rawApiUrl
+  ? (rawApiUrl.startsWith("http://") || rawApiUrl.startsWith("https://")
+      ? rawApiUrl.replace(/\/+$/, "")
+      : `https://${rawApiUrl.replace(/\/+$/, "")}`)
+  : (isLocalHost ? "http://127.0.0.1:8787" : PROD_WORKER_URL);
 
 export const MAPS_API_KEY =
   import.meta.env.VITE_GEOAPIFY_API_KEY ||
