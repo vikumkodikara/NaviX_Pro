@@ -2,9 +2,16 @@ name = "navix-pro"
 main = "src/index.ts"
 compatibility_date = "2024-05-01"
 workers_dev = true
+account_id = "b654ce5cf60fcd070a872fb13571e367"
 
 [observability]
 enabled = true
+
+[vars]
+LIVEKIT_URL = "wss://navix-voice-agent-8bu5tnf0.livekit.cloud"
+LIVEKIT_API_KEY = "APIEqnbigAbMJso"
+LIVEKIT_API_SECRET = "ZIhHHUBbmiySJRqezm9pgzzeVIgVdVNhSaJQfQhPGp1A"
+WEATHER_API_KEY = "bf58211159d556db155a26e3d03867bf"
 
 [[d1_databases]]
 binding = "DB"
