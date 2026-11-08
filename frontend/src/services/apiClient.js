@@ -9,7 +9,7 @@ import {
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 60000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -20,6 +20,13 @@ apiClient.interceptors.request.use((config) => {
   if (token) {
     config.headers = config.headers ?? {};
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  // Let the browser set multipart boundary for FormData uploads.
+  if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+    if (config.headers) {
+      delete config.headers["Content-Type"];
+      delete config.headers["content-type"];
+    }
   }
   return config;
 });

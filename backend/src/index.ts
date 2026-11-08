@@ -5,12 +5,15 @@
  *   PUBLIC:
  *     GET  /health                       Worker + service status
  *     GET  /weather?lat&lon              Live weather for a coordinate
+ *     GET  /places                       All places from D1 (map + home)
  *     POST /auth/register | login | google | logout
  *     GET  /auth/me                      Current user + access summary
  *     POST /billing/webhook              Stripe webhook (signature-verified)
  *
  *   GATED (require active trial or paid subscription):
  *     POST /chat                         Multi-agent answer pipeline
+ *     POST /transcribe                   Whisper (or Gemini) speech-to-text
+ *     POST /voice/token                  LiveKit room JWT for voice assistant
  *     GET  /nearby?lat&lon&limit         Nearest places from D1
  *     POST /billing/checkout | portal
  *     GET  /billing/status
@@ -27,6 +30,7 @@ import { runWeatherAgent } from "./agents/weather";
 import { computeAccess, requireActiveAccess } from "./auth/middleware";
 import { loadSession } from "./auth/middleware";
 import {
+  findAllPlaces,
   findNearbyLocations,
   findNearestPlaces,
   findPlaceByName,
@@ -46,6 +50,8 @@ import {
   NearbyPlace,
   WeatherResponse,
 } from "./types";
+import { transcribeAudio } from "./transcribe";
+import { mintLiveKitToken } from "./voice/token";
 import { getWeather, getWeatherForecast } from "./weather";
 
 const CORS_HEADERS: Record<string, string> = {
@@ -104,6 +110,8 @@ export default {
           return json(await healthHandler(env));
         case "/weather":
           return json(await weatherHandler(env, url));
+        case "/places":
+          return json(await placesHandler(env));
         case "/nearby":
           return json(await nearbyHandler(env, url));
         case "/chat": {
@@ -112,6 +120,19 @@ export default {
           }
           await requireActiveAccess(env, request);
           return json(await chatHandler(env, request));
+        }
+        case "/transcribe": {
+          if (request.method !== "POST") {
+            throw new HttpError(405, "Use POST for /transcribe.");
+          }
+          await requireActiveAccess(env, request);
+          return json(await transcribeHandler(env, request));
+        }
+        case "/voice/token": {
+          if (request.method !== "POST") {
+            throw new HttpError(405, "Use POST for /voice/token.");
+          }
+          return json(await voiceTokenHandler(env, request));
         }
         default:
           throw new HttpError(404, `Route not found: ${url.pathname}`);
@@ -148,6 +169,9 @@ async function healthHandler(env: Env): Promise<Record<string, unknown>> {
       google_auth: env.GOOGLE_CLIENT_ID ? "configured" : "missing",
       stripe: env.STRIPE_SECRET_KEY ? "configured" : "missing",
       stripe_webhook: env.STRIPE_WEBHOOK_SECRET ? "configured" : "missing",
+      livekit: env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET && env.LIVEKIT_URL
+        ? "configured"
+        : "missing",
     },
   };
 }
@@ -156,6 +180,57 @@ async function weatherHandler(env: Env, url: URL): Promise<WeatherResponse> {
   const lat = requireFloat(url.searchParams.get("lat"), "lat");
   const lon = requireFloat(url.searchParams.get("lon"), "lon");
   return getWeather(env, lat, lon);
+}
+
+async function placesHandler(env: Env) {
+  requireDb(env);
+  const places = await findAllPlaces(env.DB!);
+  // Shape expected by frontend normalizePlace / MapView
+  return places.map((p) => ({
+    id: p.id,
+    location_id: p.id,
+    name: p.name,
+    category: p.category,
+    era: p.era,
+    tags: p.tags,
+    coordinates: { lat: p.coordinates.lat, lng: p.coordinates.lng },
+    lat: p.coordinates.lat,
+    lng: p.coordinates.lng,
+    deep_history: p.deep_history,
+    tts_hints: p.tts_hints,
+    history: p.deep_history?.summary,
+    description: p.deep_history?.summary,
+  }));
+}
+
+async function voiceTokenHandler(env: Env, request: Request) {
+  const session = await requireActiveAccess(env, request);
+  const body = (await safeJson(request)) as {
+    lat?: unknown;
+    lon?: unknown;
+    lng?: unknown;
+  };
+
+  const lat = parseOptionalFloat(body.lat);
+  const lon = parseOptionalFloat(body.lon ?? body.lng);
+  const authHeader = request.headers.get("Authorization") || "";
+  const navixToken = authHeader.toLowerCase().startsWith("bearer ")
+    ? authHeader.slice(7).trim()
+    : "";
+
+  const roomName = `navix-${session.user.id}-${crypto.randomUUID().slice(0, 8)}`;
+  const identity = `user-${session.user.id}`;
+
+  return mintLiveKitToken(env, {
+    identity,
+    name: session.user.name || session.user.email,
+    roomName,
+    metadata: {
+      navixToken: navixToken || undefined,
+      lat,
+      lon,
+    },
+  });
 }
 
 function parseNearbyRadiusMeters(url: URL): number {
@@ -205,6 +280,32 @@ async function nearbyHandler(env: Env, url: URL) {
   requireDb(env);
   const rows = await findNearbyLocations(env, lat, lon, radiusMeters, limit);
   return { count: rows.length, radius_meters: radiusMeters, data: rows };
+}
+
+// ───────────────────────────────────────── Handlers
+
+async function transcribeHandler(
+  env: Env,
+  request: Request
+): Promise<{ text: string; provider: string }> {
+  const contentType = request.headers.get("content-type") || "";
+  if (!contentType.includes("multipart/form-data")) {
+    throw new HttpError(400, "Send multipart/form-data with an `audio` file field.");
+  }
+
+  const form = await request.formData();
+  const file = form.get("audio") || form.get("file");
+  if (!(file instanceof File)) {
+    throw new HttpError(400, "Missing `audio` (or `file`) audio file field.");
+  }
+
+  const buffer = await file.arrayBuffer();
+  return transcribeAudio(
+    env,
+    buffer,
+    file.type || "application/octet-stream",
+    file.name || "speech.webm"
+  );
 }
 
 async function chatHandler(env: Env, request: Request): Promise<ChatResponse> {

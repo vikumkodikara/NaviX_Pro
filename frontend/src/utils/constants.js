@@ -7,9 +7,21 @@ const isLocalHost =
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.NEXT_PUBLIC_API_URL ||
-  (isLocalHost ? "http://localhost:8000" : PROD_WORKER_URL);
+  (isLocalHost ? "http://127.0.0.1:8787" : PROD_WORKER_URL);
 
-export const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+export const MAPS_API_KEY =
+  import.meta.env.VITE_GEOAPIFY_API_KEY ||
+  import.meta.env.VITE_GOOGLE_MAPS_API_KEY ||
+  "";
+
+/** Prefer Geoapify (this project’s key) over Google Maps JS. */
+export const GEOAPIFY_API_KEY =
+  import.meta.env.VITE_GEOAPIFY_API_KEY ||
+  (String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").startsWith("AIza")
+    ? ""
+    : import.meta.env.VITE_GOOGLE_MAPS_API_KEY) ||
+  "";
+
 export const GOOGLE_CLIENT_ID =
   import.meta.env.VITE_GOOGLE_CLIENT_ID ||
   import.meta.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||

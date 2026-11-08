@@ -164,4 +164,37 @@ export const ceygoApi = {
       }))
       .sort((a, b) => a.distanceKm - b.distanceKm);
   },
+
+  voiceToken: async ({ lat, lon } = {}) => {
+    const payload = {};
+    if (lat != null && Number.isFinite(Number(lat))) payload.lat = Number(lat);
+    if (lon != null && Number.isFinite(Number(lon))) payload.lon = Number(lon);
+    const { data } = await retry(() => apiClient.post("/voice/token", payload));
+    if (!data?.token || !data?.url) {
+      throw new Error(data?.error || "Voice token response was incomplete.");
+    }
+    return {
+      token: data.token,
+      url: data.url,
+      roomName: data.roomName,
+      identity: data.identity,
+    };
+  },
+
+  transcribe: async (audioBlob) => {
+    const form = new FormData();
+    const type = audioBlob.type || "audio/webm";
+    const ext = type.includes("mp4")
+      ? "m4a"
+      : type.includes("ogg")
+        ? "ogg"
+        : type.includes("wav")
+          ? "wav"
+          : "webm";
+    form.append("audio", audioBlob, `speech.${ext}`);
+    const { data } = await apiClient.post("/transcribe", form, { timeout: 60000 });
+    const text = (data?.text || "").trim();
+    if (!text) throw new Error(data?.error || "Empty transcript.");
+    return { text, provider: data?.provider || "whisper" };
+  },
 };
